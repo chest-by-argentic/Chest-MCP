@@ -14,7 +14,7 @@ Chest only, over HTTPS. It has no dependency: it only imports `node:*`.
 
 - Node 22 or later.
 - The address of your Chest, `https://<chest>.argentic.app`.
-- A personal access token: in your Chest, **Profile → « Jetons d'accès »**.
+- A personal access token: in your Chest, **Profil → « Jetons d’accès »**.
   A token never has more rights than you have now. Make it **read-only** for an
   assistant that only looks, and **narrow it to some tools** for one that
   works on them only (a narrowed token has none of the rights of the whole

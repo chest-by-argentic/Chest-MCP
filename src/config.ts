@@ -44,7 +44,7 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     throw new ConfigError("CHEST_URL names this machine: only a lab does that (CHEST_MCP_LAB=1)");
   }
   const token = env["CHEST_TOKEN"];
-  if (!token) throw new ConfigError("CHEST_TOKEN is not set: create a token in your Chest, Profile, « Jetons d'accès »");
+  if (!token) throw new ConfigError("CHEST_TOKEN is not set: create a token in your Chest, Profil, « Jetons d’accès »");
   if (!tokenPattern.test(token)) throw new ConfigError("CHEST_TOKEN is not a token of a Chest (chest_pat_…)");
   return { origin: url.origin, token };
 }

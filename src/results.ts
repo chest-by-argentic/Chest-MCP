@@ -85,7 +85,7 @@ export function invalid(reason: string): Outcome {
  * code and status where one code says two things.
  */
 const refusalWords: Record<string, string> = {
-  invalid_token: "The token is unknown, expired or revoked. A member creates a new one in the Chest (Profile, « Jetons d'accès ») and sets it as CHEST_TOKEN.",
+  invalid_token: "The token is unknown, expired or revoked. A member creates a new one in the Chest (Profil, « Jetons d’accès ») and sets it as CHEST_TOKEN.",
   "read_only 403": "This token only reads: it can neither write nor dry-run a write.",
   "read_only 422": "This is read-only here: a statement that writes needs write: true (a dry run first); a view, a table without a primary key or chest_migrations is never edited.",
   narrowed: "This token is narrowed to some tools: it has none of the rights of the whole Chest (catalogue, proposals, GitHub).",
