@@ -1,0 +1,50 @@
+{
+  "name": "@argentic/chest-mcp",
+  "version": "0.1.0",
+  "description": "The MCP server that lets an assistant work on a Chest with a member's personal access token: tools, logs, database, variables, catalogue and GitHub, every write confirmed by a human.",
+  "keywords": [
+    "chest",
+    "argentic",
+    "mcp",
+    "model-context-protocol",
+    "agent"
+  ],
+  "homepage": "https://github.com/chest-by-argentic/Chest-SDK/tree/main/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/chest-by-argentic/Chest-SDK/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chest-by-argentic/Chest-SDK.git",
+    "directory": "mcp"
+  },
+  "license": "MIT",
+  "author": "Argentic",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "chest-mcp": "dist/cli.js"
+  },
+  "files": [
+    "dist/*.js"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "clean": "node -e \"for (const d of ['dist', 'build']) require('node:fs').rmSync(d, {recursive: true, force: true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "test": "npm run build && tsc -p tsconfig.json && node --test build/test/*.test.js",
+    "check:package": "node scripts/check-package.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test && npm run check:package"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.1.0",
+    "@types/node": "24.13.5",
+    "typescript": "7.0.2"
+  }
+}
