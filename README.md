@@ -14,7 +14,7 @@ Chest only, over HTTPS. It has no dependency: it only imports `node:*`.
 
 - Node 22 or later.
 - The address of your Chest, `https://<chest>.argentic.app`.
-- A personal access token: in your Chest, **Profil → « Jetons d’accès »**.
+- A personal access token: in your Chest, open your **profile** and create one under **access tokens**.
   A token never has more rights than you have now. Make it **read-only** for an
   assistant that only looks, and **narrow it to some tools** for one that
   works on them only (a narrowed token has none of the rights of the whole
@@ -200,7 +200,8 @@ npm run check:package  # npm pack, install into a temp project, run the bin
 
 `src/` holds the server (TypeScript strict, ES2022, NodeNext), compiled into
 `dist/`; `test/` its tests. `@modelcontextprotocol/client` is a development
-dependency, for the conformance tests only.
+dependency, for the conformance tests only. `AGENTS.md` is a usage guide for AI agents working
+on a Chest through this server.
 
 ## Licence
 

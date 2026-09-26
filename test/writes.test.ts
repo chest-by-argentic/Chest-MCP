@@ -193,12 +193,12 @@ test("a proposal: from the catalogue by name, or from GitHub by repository and b
   const server = spawnServer(labEnv(chest));
   assert.equal((await server.tool("propose_tool", { source: "github", name: "forms" })).structuredContent.error, "invalid_arguments");
   assert.equal((await server.tool("propose_tool", { source: "catalogue", name: "forms", repository: "a/b" })).structuredContent.error, "invalid_arguments");
-  const args = { source: "github", repository: "PaulWCZ/todo", branch: "main" };
+  const args = { source: "github", repository: "example/todo", branch: "main" };
   const dry = await server.tool("propose_tool", args);
-  assert.equal(dry.structuredContent.preview.source, "github:PaulWCZ/todo@main");
+  assert.equal(dry.structuredContent.preview.source, "github:example/todo@main");
   await server.tool("propose_tool", { ...args, confirmation: dry.structuredContent.confirmation });
   const [read, proposed] = sent();
-  assert.deepEqual(JSON.parse(read!.body), { repository: "PaulWCZ/todo", branch: "main" });
+  assert.deepEqual(JSON.parse(read!.body), { repository: "example/todo", branch: "main" });
   assert.equal(proposed!.url, "/api/v1/proposals");
   assert.deepEqual(JSON.parse(proposed!.body), args);
   await server.end();
