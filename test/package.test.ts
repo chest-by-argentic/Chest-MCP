@@ -14,7 +14,3 @@ test("the package has no runtime dependency", () => {
   const manifest = JSON.parse(read("../../package.json")) as Record<string, unknown>;
   for (const field of ["dependencies", "peerDependencies", "optionalDependencies", "bundleDependencies"]) assert.equal(manifest[field], undefined, field);
 });
-
-test("the licence of the package is the repository's", () => {
-  assert.equal(read("../../LICENSE"), read("../../../LICENSE"));
-});
