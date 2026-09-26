@@ -187,8 +187,8 @@ said, and a page cut short gives no cursor that would skip lines.
 
 ## Develop
 
-This package lives in `mcp/` of
-[chest-by-argentic/Chest-SDK](https://github.com/chest-by-argentic/Chest-SDK).
+This package is the repository
+[chest-by-argentic/Chest-MCP](https://github.com/chest-by-argentic/Chest-MCP).
 
 ```sh
 npm ci

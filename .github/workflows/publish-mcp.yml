@@ -1,0 +1,47 @@
+# Publish @argentic/chest-mcp to npm when a tag vX.Y.Z is pushed, through npm
+# trusted publishing (OIDC): no NPM_TOKEN, provenance attached. The trusted
+# publisher is configured on npmjs.com for this repository and this file
+# (publish-mcp.yml); see PUBLISHING.md.
+name: Publish MCP
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-mcp
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install --global npm@11
+      - name: Check npm version
+        run: |
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11 || (a===11 && (b<5 || (b===5 && c<1)))) { console.error("npm "+process.argv[1]+" cannot use trusted publishing"); process.exit(1); }' "$(npm --version)"
+          npm --version
+      - name: Check the tag is the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="v$(node -p 'require("./package.json").version')"
+          if [ "$TAG" != "$version" ]; then
+            echo "Tag $TAG does not match package.json ($version)" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm test
+      - run: npm run check:package
+      - run: npm publish

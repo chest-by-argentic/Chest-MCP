@@ -9,14 +9,13 @@
     "model-context-protocol",
     "agent"
   ],
-  "homepage": "https://github.com/chest-by-argentic/Chest-SDK/tree/main/mcp#readme",
+  "homepage": "https://github.com/chest-by-argentic/Chest-MCP#readme",
   "bugs": {
-    "url": "https://github.com/chest-by-argentic/Chest-SDK/issues"
+    "url": "https://github.com/chest-by-argentic/Chest-MCP/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/chest-by-argentic/Chest-SDK.git",
-    "directory": "mcp"
+    "url": "git+https://github.com/chest-by-argentic/Chest-MCP.git"
   },
   "license": "MIT",
   "author": "Argentic",
