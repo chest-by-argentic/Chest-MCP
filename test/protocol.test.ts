@@ -62,8 +62,8 @@ test("an unknown legacy version is answered with the newest legacy one", async (
   await server.end();
 });
 
-const writes = ["redeploy", "db_query", "db_insert", "db_update", "db_delete", "set_variable", "install_from_catalogue", "link_github", "propose_tool"];
-const reads = ["whoami", "list_tools", "tool_status", "list_deployments", "build_log", "read_logs", "db_overview", "db_structure", "db_rows", "list_variables", "catalogue_list", "github_preview"];
+const writes = ["redeploy", "db_query", "db_insert", "db_update", "db_delete", "set_variable", "install_from_catalogue", "link_github", "propose_tool", "files_delete"];
+const reads = ["whoami", "list_tools", "tool_status", "list_deployments", "build_log", "read_logs", "db_overview", "db_structure", "db_rows", "list_variables", "catalogue_list", "github_preview", "files_list", "files_link"];
 
 test("tools/list: the v1 tools, closed schemas, and hints that say which write", async () => {
   const server = spawnServer(labEnv(chest));
@@ -87,6 +87,7 @@ test("tools/list: the v1 tools, closed schemas, and hints that say which write",
   }
   assert.equal(tools.find(tool => tool.name === "db_delete")!.annotations.destructiveHint, true);
   assert.equal(tools.find(tool => tool.name === "db_insert")!.annotations.destructiveHint, false);
+  assert.equal(tools.find(tool => tool.name === "files_delete")!.annotations.destructiveHint, true);
   assert.deepEqual(tools.find(tool => tool.name === "read_logs")!.inputSchema.properties.limit, { type: "integer", minimum: 1, maximum: 500, description: "How many lines at most (100 by default)." });
   assert.equal((await server.request("tools/list", { cursor: "x" })).error.code, -32602);
   await server.end();

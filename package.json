@@ -1,7 +1,7 @@
 {
   "name": "@argentic/chest-mcp",
   "version": "0.1.1",
-  "description": "The MCP server that lets an assistant work on a Chest with a member's personal access token: tools, logs, database, variables, catalogue and GitHub, every write confirmed by a human.",
+  "description": "The MCP server that lets an assistant work on a Chest with a member's personal access token: tools, logs, database, files, variables, catalogue and GitHub, every write confirmed by a human.",
   "keywords": [
     "chest",
     "argentic",
