@@ -3,12 +3,13 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fakeChest, json, labEnv, MODERN, spawnServer, TOKEN, type FakeChest } from "./harness.js";
+import { VERSION } from "../src/version.js";
 
 let chest: FakeChest;
 before(async () => (chest = await fakeChest()));
 after(() => chest.close());
 
-const serverInfo = { name: "chest-mcp", title: "Chest", version: "0.1.0" };
+const serverInfo = { name: "chest-mcp", title: "Chest", version: VERSION };
 
 test("server/discover says the versions, the capabilities, the rules and who the server is", async () => {
   const server = spawnServer(labEnv(chest));
@@ -131,7 +132,7 @@ test("each call sends the token as a Bearer header, and nothing of a browser", a
   assert.equal(sent!.method, "GET");
   assert.equal(sent!.headers["authorization"], "Bearer " + TOKEN);
   for (const header of ["cookie", "origin", "sec-fetch-site", "referer"]) assert.equal(sent!.headers[header], undefined, header);
-  assert.match(sent!.headers["user-agent"] ?? "", /^chest-mcp\/0\.1\.0$/u);
+  assert.equal(sent!.headers["user-agent"], "chest-mcp/" + VERSION);
   await server.end();
 });
 
