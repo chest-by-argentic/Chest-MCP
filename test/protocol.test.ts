@@ -120,7 +120,7 @@ test("JSON-RPC: a parse error, a batch, a bad id, bad params, an unknown method 
 });
 
 test("each call sends the token as a Bearer header, and nothing of a browser", async () => {
-  chest.handle((request, response) => json(response, 200, { member: { subject: "s" }, token: { id: "0123456789ab" }, runs: { all: true, tools: [] }, seen: request.url }));
+  chest.handle((request, response) => json(response, 200, { member: { id: "mbr_aaaaaaaaaaaaaaaaaaaaaaaaaa" }, token: { id: "0123456789ab" }, runs: { all: true, tools: [] }, seen: request.url }));
   chest.received.length = 0;
   const server = spawnServer(labEnv(chest));
   const result = await server.tool("whoami");
