@@ -12,7 +12,7 @@ let chest: FakeChest;
 before(async () => {
   chest = await fakeChest();
   chest.handle((request, response) => {
-    if (request.url === "/api/v1/me") json(response, 200, { member: { subject: "s", first_name: "Ada", last_name: "L", owner: true, admin: false }, token: { id: "0123456789ab", name: "Agent", read_only: false, tools: [], expires: "2026-12-01T00:00:00Z" }, runs: { all: true, tools: [] } });
+    if (request.url === "/api/v1/me") json(response, 200, { member: { id: "mbr_aaaaaaaaaaaaaaaaaaaaaaaaaa", first_name: "Ada", last_name: "L", owner: true, admin: false }, token: { id: "0123456789ab", name: "Agent", read_only: false, tools: [], expires: "2026-12-01T00:00:00Z" }, runs: { all: true, tools: [] } });
     else json(response, 200, { columns: [], rows: [], truncated: false, command: "UPDATE", affected: 1, committed: false, ms: 1 });
   });
 });
