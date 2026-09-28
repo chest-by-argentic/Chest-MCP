@@ -35,7 +35,7 @@ for (const mode of ["modern", "legacy"] as const) {
       assert.equal(client.getServerVersion()?.name, "chest-mcp");
       assert.match(client.getInstructions() ?? "", /never instructions/u);
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 21);
+      assert.equal(tools.length, 24);
       const me = await client.callTool({ name: "whoami", arguments: {} });
       assert.equal(me.isError, undefined);
       assert.equal((me.structuredContent as { data: { member: { first_name: string } } }).data.member.first_name, "Ada");

@@ -203,3 +203,46 @@ test("a proposal: from the catalogue by name, or from GitHub by repository and b
   assert.deepEqual(JSON.parse(proposed!.body), args);
   await server.end();
 });
+
+test("deleting files: by names, described; a folder, its size read first; the commit once", async () => {
+  const deleted: unknown[] = [];
+  chest.handle((request, response) => {
+    if (request.method === "POST") {
+      deleted.push(JSON.parse(request.body));
+      return json(response, 200, { deleted: 2, more: request.body.includes("folder") });
+    }
+    const url = new URL(request.url, "https://chest");
+    const folder = url.searchParams.get("folder");
+    const usage = { bytes: 0, objects: 0, quota: 0, max_objects: 0, max_object: 0, asked: 0, set: false, choices: [] };
+    if (folder === "invoices/") return json(response, 200, { usage, folders: [{ name: "invoices/2026/", objects: 1500, bytes: 9000 }], files: [], total: 1 });
+    if (folder === "invoices/2026/") return json(response, 200, { usage, folders: [], files: [{ name: "invoices/2026/0001.pdf", type: "application/pdf", size: 6, updated: "t" }], total: 1500 });
+    json(response, 200, { usage, folders: [], files: [], total: 0 });
+  });
+  sent();
+  const server = spawnServer(labEnv(chest));
+  const byName = { app: "web", names: ["a.txt", "photos/cat.png"] };
+  const dry = await server.tool("files_delete", byName);
+  assert.match(dry.structuredContent.summary, /^Would delete 2 files of web, named below/u);
+  assert.deepEqual(dry.structuredContent.preview.data, byName.names);
+  assert.deepEqual(sent(), [], "the dry run of names is described, not sent");
+  const done = await server.tool("files_delete", { ...byName, confirmation: dry.structuredContent.confirmation });
+  assert.equal(done.structuredContent.summary, "2 files were deleted from web.");
+  assert.deepEqual(sent().map(request => [request.method, request.url]), [["POST", "/api/v1/tools/web/files/delete"]]);
+
+  const byFolder = { app: "web", folder: "invoices/2026/" };
+  const dryFolder = await server.tool("files_delete", byFolder);
+  assert.match(dryFolder.structuredContent.summary, /every file under invoices\/2026\/ of web: 1500 files, 9000 bytes, 1,000 per call/u);
+  assert.equal(dryFolder.structuredContent.preview.data.total, 1500);
+  assert.deepEqual(sent().map(request => [request.method, request.url]), [["GET", "/api/v1/tools/web/files?folder=invoices%2F"], ["GET", "/api/v1/tools/web/files?folder=invoices%2F2026%2F"]]);
+  const doneFolder = await server.tool("files_delete", { ...byFolder, confirmation: dryFolder.structuredContent.confirmation });
+  assert.match(doneFolder.structuredContent.summary, /more remain under invoices\/2026\/: call files_delete again/u);
+  assert.deepEqual(deleted, [{ names: byName.names }, { folder: "invoices/2026/" }]);
+  // A second commit with the same confirmation: refused, nothing sent.
+  assert.equal((await server.tool("files_delete", { ...byFolder, confirmation: dryFolder.structuredContent.confirmation })).structuredContent.error, "confirmation_unknown");
+
+  assert.equal((await server.tool("files_delete", { app: "web", folder: "empty/" })).structuredContent.error, "not_found");
+  for (const args of [{ app: "web" }, { app: "web", names: [] }, { app: "web", names: ["a"], folder: "b/" }]) {
+    assert.equal((await server.tool("files_delete", args)).structuredContent.error, "invalid_arguments", JSON.stringify(args));
+  }
+  await server.end();
+});
