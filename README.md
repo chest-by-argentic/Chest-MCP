@@ -77,7 +77,7 @@ In `claude_desktop_config.json` (Settings → Developer → Edit Config):
 
 Any client that launches a stdio server: the command `npx`, the arguments
 `-y @argentic/chest-mcp`, and the two variables above in its environment. To
-pin a version, name it: `@argentic/chest-mcp@0.1.1`.
+pin a version, name it: `@argentic/chest-mcp@0.2.0`.
 
 ## Protocol
 
