@@ -4,7 +4,7 @@ For maintainers. Releases are published to npm by GitHub Actions through npm
 **trusted publishing** (OIDC): no npm token exists anywhere, and every version
 carries a provenance attestation linking it to its commit and workflow. The
 package has no runtime dependency; it ships `dist/*.js`, `README.md`,
-`LICENSE` and `package.json` (15 files).
+`LICENSE` and `package.json` (14 files).
 
 Requirements (npm documentation,
 [Trusted publishing](https://docs.npmjs.com/trusted-publishers)): npm CLI

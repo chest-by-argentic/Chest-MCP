@@ -9,7 +9,6 @@
 // Tools and resources are the same in both; a modern result also says its
 // resultType, how long it may be cached, and the server's identity.
 import type { Chest } from "./chest.js";
-import type { Confirmations } from "./confirm.js";
 import { RULES, RULES_URI } from "./rules.js";
 import { call, definitions } from "./tools.js";
 import { VERSION } from "./version.js";
@@ -56,13 +55,11 @@ type Params = Record<string, unknown>;
 /** The MCP server of one Chest, for one process. */
 export class Server {
   readonly #chest: Chest;
-  readonly #confirmations: Confirmations;
   /** The legacy version initialize agreed on, if a legacy client opened. */
   #legacy: string | undefined;
 
-  constructor(chest: Chest, confirmations: Confirmations) {
+  constructor(chest: Chest) {
     this.#chest = chest;
-    this.#confirmations = confirmations;
   }
 
   /** Answers a request: its result, or an RpcError thrown. */
@@ -111,7 +108,7 @@ export class Server {
         const args = params["arguments"] ?? {};
         if (typeof name !== "string") throw new RpcError(INVALID_PARAMS, "name is required");
         if (args === null || typeof args !== "object" || Array.isArray(args)) throw new RpcError(INVALID_PARAMS, "arguments must be an object");
-        const outcome = await call(name, args as Params, { chest: this.#chest, confirmations: this.#confirmations, signal });
+        const outcome = await call(name, args as Params, { chest: this.#chest, signal });
         if (!outcome) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${name.slice(0, 100)}`);
         return outcome;
       }
