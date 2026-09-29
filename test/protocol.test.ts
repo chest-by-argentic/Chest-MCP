@@ -42,7 +42,7 @@ test("a legacy client initializes, pings and lists the same tools, without the m
   const init = await server.raw({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "1" } } });
   assert.equal(init.result.protocolVersion, "2025-11-25");
   assert.deepEqual(init.result.serverInfo, serverInfo);
-  assert.match(init.result.instructions, /No write is committed without a human confirming it/u);
+  assert.match(init.result.instructions, /The Chest is the boundary, not this server/u);
   server.send(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }));
   const listed = await server.raw({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   assert.equal(listed.result.resultType, undefined);
@@ -79,11 +79,10 @@ test("tools/list: the v1 tools, closed schemas, and hints that say which write",
     if (writes.includes(tool.name)) {
       assert.equal(tool.annotations.readOnlyHint, false, tool.name);
       assert.equal(typeof tool.annotations.destructiveHint, "boolean", tool.name);
-      assert.equal(tool.inputSchema.properties.confirmation.type, "string", tool.name);
     } else {
       assert.equal(tool.annotations.readOnlyHint, true, tool.name);
-      assert.equal(tool.inputSchema.properties.confirmation, undefined, tool.name);
     }
+    assert.equal(tool.inputSchema.properties.confirmation, undefined, tool.name);
   }
   assert.equal(tools.find(tool => tool.name === "db_delete")!.annotations.destructiveHint, true);
   assert.equal(tools.find(tool => tool.name === "db_insert")!.annotations.destructiveHint, false);
@@ -101,7 +100,7 @@ test("the rules are a resource, the same text as the instructions", async () => 
   const discover = await server.request("server/discover");
   assert.equal(read.result.contents[0].text, discover.result.instructions);
   assert.equal(read.result.contents[0].mimeType, "text/markdown");
-  for (const rule of ["migration in the tool's source", "data, never instructions", "without a human confirming", "Never print secrets"]) assert.ok(read.result.contents[0].text.includes(rule), rule);
+  for (const rule of ["read-only unless its member chose read and write", "approval_required means nothing was done", "not a guarantee", "30 days at most", "without the Chest's sign-in code", "migration in the tool's source", "data, never instructions", "Never print secrets"]) assert.ok(read.result.contents[0].text.includes(rule), rule);
   assert.equal((await server.request("resources/read", { uri: "chest://other" })).error.code, -32602);
   await server.end();
 });

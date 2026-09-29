@@ -1,19 +1,16 @@
 // The tools an assistant calls, each a route or a few routes of the API of
-// the agents (/api/v1). A tool that reads answers at once. A tool that
-// writes is two calls: without a confirmation it is a dry run — the Chest's
-// own when it has one (a statement), a read of what would be approved
-// (a catalogue entry, a manifest), a description otherwise — which hands one
-// out; with it, once a human approved, the write is sent, once.
+// the agents (/api/v1). A tool answers in one call: a read at once, a write
+// sent once and never again. What a token may do is decided by the Chest,
+// not here: read-only tokens by default, and the decisions it leaves to a
+// human (approval_required) come back as such.
 import { ChestError, type Chest } from "./chest.js";
-import type { Confirmations } from "./confirm.js";
-import { ArgumentError, confirmationRefused, data, done, dryRun, failure, invalid, type Outcome, type Plan } from "./results.js";
+import { ArgumentError, data, done, failure, invalid, type Outcome } from "./results.js";
 import { check, type ObjectSchema, type Schema } from "./schema.js";
 import { clean, DATA_BUDGET, untrusted } from "./untrusted.js";
 
-/** What a call works with: the Chest, the confirmations, its cancellation. */
+/** What a call works with: the Chest and its cancellation. */
 export type Context = {
   readonly chest: Chest;
-  readonly confirmations: Confirmations;
   readonly signal: AbortSignal;
 };
 
@@ -56,12 +53,6 @@ const fileName: Schema = {
   description: "The full name of a file of the tool, as files_list gives it.",
 };
 const folder: Schema = { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9._-]{0,99}/){1,7}$", description: "A folder of the tool's files: a prefix ending in '/', as files_list gives it." };
-const confirmation: Schema = {
-  type: "string",
-  maxLength: 200,
-  description: "The confirmation the dry run gave. Leave it out for the dry run; give it only after a human approved what the dry run showed.",
-};
-
 /** An object of arguments, exactly these. */
 function input(properties: Record<string, Schema>, required: string[] = []): Definition["inputSchema"] {
   return { type: "object", properties, required, additionalProperties: false };
@@ -72,44 +63,16 @@ function reader(name: string, title: string, description: string, schema: Defini
   return { name, title, description, inputSchema: schema, annotations: { title, readOnlyHint: true, openWorldHint: false }, run };
 }
 
-/** A plan of a write, and what the commit needs of what the dry run read. */
-type Planned = Plan & { readonly bound?: Record<string, unknown> };
-
-/**
- * A tool that writes, in two calls: `plan` makes the dry run, `commit` the
- * write, given what the plan bound. A confirmation is the only way from one
- * to the other; the commit is sent once and never again.
- */
-function writer(
-  name: string,
-  title: string,
-  description: string,
-  schema: Definition["inputSchema"],
-  hints: { readonly destructive: boolean; readonly idempotent?: boolean },
-  plan: (args: Args, context: Context) => Promise<Planned>,
-  commit: (args: Args, bound: Record<string, unknown>, context: Context) => Promise<Outcome>,
-): Tool {
+/** A tool that writes: sent once, never again, even when its outcome is uncertain. */
+function writer(name: string, title: string, description: string, schema: Definition["inputSchema"], hints: { readonly destructive: boolean; readonly idempotent?: boolean }, run: Tool["run"]): Tool {
   return {
     name,
     title,
-    description: description + " Two calls: a dry run without confirmation, then the commit with it, once a human approved.",
-    inputSchema: { ...schema, properties: { ...schema.properties, confirmation } },
+    description,
+    inputSchema: schema,
     annotations: { title, readOnlyHint: false, destructiveHint: hints.destructive, idempotentHint: hints.idempotent ?? false, openWorldHint: false },
-    run: (args, context) => twoSteps(name, args, context, plan, commit),
+    run,
   };
-}
-
-/** The dry run, or the commit of a request with its confirmation. */
-async function twoSteps(name: string, args: Args, context: Context, plan: (args: Args, context: Context) => Promise<Planned>, commit: (args: Args, bound: Record<string, unknown>, context: Context) => Promise<Outcome>): Promise<Outcome> {
-  const { confirmation: given, ...request } = args;
-  if (given === undefined) {
-    const planned = await plan(request, context);
-    const issued = context.confirmations.issue(name, request, planned.bound);
-    return dryRun(name, planned, issued.confirmation, issued.expiresAt);
-  }
-  const redeemed = context.confirmations.redeem(name, request, given as string);
-  if ("refused" in redeemed) return confirmationRefused(name, redeemed.refused);
-  return commit(request, redeemed.bound, context);
 }
 
 /** A segment of a path, from an argument checked by its pattern. */
@@ -140,7 +103,7 @@ function objects(value: unknown): Record<string, unknown>[] {
   return value.map(object);
 }
 
-/** A text given by the model, as a summary shows it: cleaned and bounded. */
+/** A text given by the model, as the server's words show it: cleaned and bounded. */
 function quoted(value: unknown, max = 2000): string {
   const text = clean(typeof value === "string" ? value : JSON.stringify(value));
   return text.length > max ? text.slice(0, max) + "…" : text;
@@ -159,21 +122,10 @@ async function catalogueEntry(context: Context, name: unknown): Promise<Record<s
   return entry;
 }
 
-/** What an entry of the catalogue shows of what would be approved. */
-function entryPreview(name: unknown, entry: Record<string, unknown>) {
-  const shown = ["title", "description", "repository", "commit", "permissions", "roles", "state", "reason", "update", "more"];
-  return untrusted(`catalogue:${name}`, Object.fromEntries(shown.filter(field => field in entry).map(field => [field, entry[field]])));
-}
-
 /** The manifest at the head of a branch, read by the Chest; nothing built. */
 async function manifest(context: Context, args: Args) {
   const read = await post(context, "/github/read", { repository: args["repository"], branch: args["branch"] }, false);
   return untrusted(`github:${args["repository"]}@${args["branch"]}`, read);
-}
-
-/** The folder that holds a folder: "" for the top. */
-function parent(name: string): string {
-  return name.slice(0, name.slice(0, -1).lastIndexOf("/") + 1);
 }
 
 /** A listing of a tool's files, its shape checked: {usage, folders, files, total}. */
@@ -216,38 +168,6 @@ function inboxOf(value: unknown): { unread: number; badges: Record<string, unkno
 function given(args: Args, ...names: string[]): Args {
   return Object.fromEntries(names.filter(name => args[name] !== undefined).map(name => [name, args[name]]));
 }
-
-/**
- * A statement that writes, in two calls: the Chest's dry run (run, counted,
- * rolled back), then its commit. db_query gives it the calls with write.
- */
-const queryWrite = writer(
-  "db_query",
-  "Run SQL",
-  "Runs one SQL statement on a tool's database, as the tool's own role. Without write, it reads, in a read-only transaction, in one call. With write: true, it writes: the first call is the Chest's dry run (run then rolled back, the rows it would change counted). A change of structure is never run: the Chest answers the migration to add to the tool's source instead.",
-  input(
-    {
-      app,
-      sql: { type: "string", minLength: 1, maxLength: 65536, description: "One statement." },
-      write: { type: "boolean", description: "The statement writes (INSERT, UPDATE, DELETE…): a dry run first, then the commit with the confirmation." },
-    },
-    ["app", "sql"],
-  ),
-  { destructive: true },
-  async (args, context) => {
-    const result = object(await post(context, `/tools/${segment(args["app"])}/database/query`, { sql: args["sql"], write: true }, true));
-    return {
-      summary: `Would commit on the database of ${args["app"]} the statement:\n${quoted(args["sql"])}`,
-      ...(typeof result["affected"] === "number" ? { affected: result["affected"] } : {}),
-      preview: untrusted(`rows:${args["app"]}`, result),
-    };
-  },
-  async (args, _, context) => {
-    const result = await post(context, `/tools/${segment(args["app"])}/database/query`, { sql: args["sql"], write: true, commit: true }, true);
-    const affected = (result as Record<string, unknown> | null)?.["affected"];
-    return done(`the statement was committed on ${args["app"]}${typeof affected === "number" ? `, ${affected} rows changed` : ""}.`, untrusted(`rows:${args["app"]}`, result));
-  },
-);
 
 const tools: readonly Tool[] = [
   reader("whoami", "Who am I", "The member this token acts for, the token (name, read-only, tools it is narrowed to, expiry) and what it runs of the Chest.", input({}), async (_, context) =>
@@ -293,8 +213,7 @@ const tools: readonly Tool[] = [
     "Starts a tool again with its variables as they are now: the new instance takes the traffic once it answers (up to about two minutes); one that does not leaves the instance in service as it was.",
     input({ app }, ["app"]),
     { destructive: false, idempotent: true },
-    async args => ({ summary: `Would start ${args["app"]} again with its variables as they are now; the instance in service keeps the traffic until the new one answers.` }),
-    async (args, _, context) => {
+    async (args, context) => {
       await post(context, `/tools/${segment(args["app"])}/redeploy`, {}, true);
       return done(`${args["app"]} was started again and its new instance answers.`);
     },
@@ -372,26 +291,44 @@ const tools: readonly Tool[] = [
       return data(`Rows of ${quoted(args["schema"])}.${quoted(args["table"])} in ${args["app"]}${rows.truncated ? ", not all of them: they did not fit; ask for fewer (limit)" : ""}:`, rows);
     },
   ),
-  {
-    ...queryWrite,
-    run: async (args, context) => {
-      if (args["write"] === true) return queryWrite.run(args, context);
-      if (args["confirmation"] !== undefined) return invalid("a confirmation is only for a statement run with write: true");
-      const result = await post(context, `/tools/${segment(args["app"])}/database/query`, { sql: args["sql"] }, false);
-      return data(`Result of the statement on ${args["app"]} (read only):`, untrusted(`rows:${args["app"]}`, result));
+  writer(
+    "db_query",
+    "Run SQL",
+    "Runs one SQL statement on a tool's database, as the tool's own role. Without write, it reads, in a read-only transaction. With write: true, it writes and commits (INSERT, UPDATE, DELETE…); with dry_run too, the Chest runs it then rolls it back and counts the rows it would change, nothing changed. A change of structure is never run: the Chest answers the migration to add to the tool's source instead.",
+    input(
+      {
+        app,
+        sql: { type: "string", minLength: 1, maxLength: 65536, description: "One statement." },
+        write: { type: "boolean", description: "The statement writes (INSERT, UPDATE, DELETE…): it is committed." },
+        dry_run: { type: "boolean", description: "With write: true, run the statement then roll it back, and count the rows it would change: nothing is changed." },
+      },
+      ["app", "sql"],
+    ),
+    { destructive: true },
+    async (args, context) => {
+      const path = `/tools/${segment(args["app"])}/database/query`;
+      if (args["write"] !== true) {
+        if (args["dry_run"] !== undefined) throw new ArgumentError("dry_run is only for a statement run with write: true");
+        return data(`Result of the statement on ${args["app"]} (read only):`, untrusted(`rows:${args["app"]}`, await post(context, path, { sql: args["sql"] }, false)));
+      }
+      if (args["dry_run"] === true) {
+        // The Chest's own dry run: run, counted, rolled back — nothing to be uncertain of.
+        const result = object(await post(context, path, { sql: args["sql"], write: true }, false));
+        const affected = typeof result["affected"] === "number" ? `; it would change ${result["affected"]} rows` : "";
+        return data(`Dry run of the statement on ${args["app"]}: run then rolled back, nothing was changed${affected}:`, untrusted(`rows:${args["app"]}`, result));
+      }
+      const result = await post(context, path, { sql: args["sql"], write: true, commit: true }, true);
+      const affected = (result as Record<string, unknown> | null)?.["affected"];
+      return done(`the statement was committed on ${args["app"]}${typeof affected === "number" ? `, ${affected} rows changed` : ""}.`, untrusted(`rows:${args["app"]}`, result));
     },
-  },
+  ),
   writer(
     "db_insert",
     "Add a row",
     "Adds a row to a table of a tool's database; the columns not named take their default. A view, a table without a primary key or chest_migrations is never edited.",
     input({ app, schema: schemaName, table: tableName, values }, ["app", "schema", "table", "values"]),
     { destructive: false },
-    async args => ({
-      summary: `Would add to ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]} a row with the values: ${quoted(args["values"])}`,
-      affected: 1,
-    }),
-    async (args, _, context) => {
+    async (args, context) => {
       const row = await post(context, `/tools/${segment(args["app"])}/database/rows/insert`, { table: table(args), values: args["values"] }, true);
       return done(`a row was added to ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]}.`, untrusted(`rows:${args["app"]}`, row));
     },
@@ -402,11 +339,7 @@ const tools: readonly Tool[] = [
     "Changes the values of a row, found by its key, as long as it is still the version read: a row changed since is refused (row_changed), nothing written.",
     input({ app, schema: schemaName, table: tableName, key, version, values }, ["app", "schema", "table", "key", "version", "values"]),
     { destructive: true },
-    async args => ({
-      summary: `Would change in ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]} the row of key ${quoted(args["key"])} (version ${args["version"]}) to the values: ${quoted(args["values"])}`,
-      affected: 1,
-    }),
-    async (args, _, context) => {
+    async (args, context) => {
       const row = await post(context, `/tools/${segment(args["app"])}/database/rows/update`, { table: table(args), key: args["key"], version: args["version"], values: args["values"] }, true);
       return done(`the row of key ${quoted(args["key"])} was changed in ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]}.`, untrusted(`rows:${args["app"]}`, row));
     },
@@ -417,8 +350,7 @@ const tools: readonly Tool[] = [
     "Deletes a row, found by its key, as long as it is still the version read: a row changed since is refused (row_changed), nothing deleted.",
     input({ app, schema: schemaName, table: tableName, key, version }, ["app", "schema", "table", "key", "version"]),
     { destructive: true },
-    async args => ({ summary: `Would delete from ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]} the row of key ${quoted(args["key"])} (version ${args["version"]}).`, affected: 1 }),
-    async (args, _, context) => {
+    async (args, context) => {
       await post(context, `/tools/${segment(args["app"])}/database/rows/delete`, { table: table(args), key: args["key"], version: args["version"] }, true);
       return done(`the row of key ${quoted(args["key"])} was deleted from ${quoted(args["schema"])}.${quoted(args["table"])} of ${args["app"]}.`);
     },
@@ -478,34 +410,15 @@ const tools: readonly Tool[] = [
   writer(
     "files_delete",
     "Delete files",
-    "Deletes files of a tool: by their names (up to 1,000; a name it no longer has is passed over), or everything under a folder, 1,000 files per call (more says some remain: a new dry run deletes the next ones). The tool is not told: it may still refer to them. Written in the tool's storage journal.",
+    "Deletes files of a tool: by their names (up to 1,000; a name it no longer has is passed over), or everything under a folder, 1,000 files per call (more says some remain: a new call deletes the next ones). The tool is not told: it may still refer to them. Written in the tool's storage journal.",
     input({ app, names: { type: "array", maxItems: 1000, items: fileName, description: "The full names of the files, as files_list gives them." }, folder: { ...folder, description: "A folder whose files all go, a prefix ending in '/'." } }, ["app"]),
     { destructive: true },
     async (args, context) => {
       const names = args["names"] as string[] | undefined;
       if ((names === undefined || names.length === 0) === (args["folder"] === undefined)) throw new ArgumentError("files_delete takes names (at least one) or a folder, not both");
-      if (names) {
-        return {
-          summary: `Would delete ${names.length} file${names.length === 1 ? "" : "s"} of ${args["app"]}, named below; a name the tool no longer has is passed over. The tool is not told: it may still refer to them.`,
-          preview: untrusted(`files:${args["app"]}`, names),
-        };
-      }
-      // One request after the other: the folder's size in its parent, then what it holds.
-      const name = args["folder"] as string;
-      const above = await listing(context, args["app"], new URLSearchParams(parent(name) ? { folder: parent(name) } : {}));
-      const row = objects(above["folders"]).find(folder => folder["name"] === name);
-      const inside = await listing(context, args["app"], new URLSearchParams({ folder: name }));
-      if (inside["total"] === 0) throw new ChestError("not_found", `${quoted(name)} holds no file of ${args["app"]}: nothing to delete`, { uncertain: false });
-      const size = row && typeof row["objects"] === "number" && typeof row["bytes"] === "number" ? `: ${row["objects"]} files, ${row["bytes"]} bytes` : "";
-      return {
-        summary: `Would delete every file under ${quoted(name)} of ${args["app"]}${size}, 1,000 per call; what it holds first is below. The tool is not told: it may still refer to them.`,
-        preview: untrusted(`files:${args["app"]}`, { folders: inside["folders"], files: inside["files"], total: inside["total"] }),
-      };
-    },
-    async (args, _, context) => {
       const result = object(await post(context, `/tools/${segment(args["app"])}/files/delete`, given(args, "names", "folder"), true));
       if (typeof result["deleted"] !== "number" || typeof result["more"] !== "boolean") throw new ChestError("invalid_answer", "The Chest answered the deletion in a shape it never gives", { uncertain: true });
-      return done(`${result["deleted"]} file${result["deleted"] === 1 ? " was" : "s were"} deleted from ${args["app"]}${result["more"] ? `; more remain under ${quoted(args["folder"])}: call files_delete again for a new dry run` : ""}.`);
+      return done(`${result["deleted"]} file${result["deleted"] === 1 ? " was" : "s were"} deleted from ${args["app"]}${result["more"] ? `; more remain under ${quoted(args["folder"])}: call files_delete again to delete the next ones` : ""}.`);
     },
   ),
   reader("list_variables", "List variables", "The variables of a tool by name, whether each is secret, and the names its version in service expects (missing: those not set). Never a value.", input({ app }, ["app"]), async (args, context) => {
@@ -535,16 +448,6 @@ const tools: readonly Tool[] = [
       const withValue = args["value"] !== undefined;
       const withSecret = args["secret"] !== undefined;
       if (set ? !(withValue && withSecret) : withValue || withSecret) throw new ArgumentError("set takes a value and secret; remove takes neither");
-      const listed = object(await get(context, `/tools/${segment(args["app"])}/variables`));
-      const current = objects(listed["variables"]).find(variable => variable["name"] === args["name"]);
-      const expected = Array.isArray(listed["expected"]) && listed["expected"].includes(args["name"]);
-      if (!set && !current) throw new ChestError("not_found", `${args["name"]} is not a variable of ${args["app"]}: nothing to remove`, { uncertain: false });
-      const what = set
-        ? `Would set the variable ${args["name"]} of ${args["app"]}${args["secret"] ? " as a secret" : ""} (the value is not repeated here)${current ? `, replacing its value${current["secret"] === true ? " (secret)" : ""}` : ", a new variable"}.`
-        : `Would remove the variable ${args["name"]} of ${args["app"]}.`;
-      return { summary: `${what} The version in service ${expected ? "expects" : "does not name"} it. It applies at the next start (redeploy).` };
-    },
-    async (args, _, context) => {
       await post(context, `/tools/${segment(args["app"])}/variables`, { operation: args["operation"], name: args["name"], ...given(args, "value", "secret") }, true);
       return done(`the variable ${args["name"]} of ${args["app"]} was ${args["operation"] === "set" ? "set" : "removed"}; it applies at the next start (redeploy).`);
     },
@@ -555,21 +458,14 @@ const tools: readonly Tool[] = [
   writer(
     "install_from_catalogue",
     "Install from the catalogue",
-    "Installs a tool of the catalogue, exactly as its entry says (repository, commit, permissions, roles): the Chest builds and installs it in the background. For whoever runs the Chest (owner, admins); a member proposes it instead (propose_tool). Replacing a running tool is not for agents.",
+    "Asks to install a tool of the catalogue, exactly as its entry says (repository, commit, permissions, roles). The Chest never installs it for a token: it records a request the owner or an admin approves in the Chest, and answers approval_required with the page where they decide. A member proposes a tool with propose_tool. Replacing a running tool is not for agents.",
     input({ name: toolName, as, open_public: { type: "boolean", description: "Open its public part once installed, for a tool that declares one." } }, ["name"]),
     { destructive: false },
     async (args, context) => {
+      // The digest of the entry read: the Chest refuses it if the entry changed since, so what a human approves is this entry.
       const entry = await catalogueEntry(context, args["name"]);
       if (typeof entry["approval"] !== "string" || !/^[a-f0-9]{64}$/u.test(entry["approval"])) throw unexpected();
-      return {
-        summary: `Would install the catalogue tool ${args["name"]}${args["as"] ? ` under the name ${args["as"]}` : ""}${args["open_public"] ? ", its public part opened" : ""}, exactly as its entry below says: its repository, its commit, the permissions and roles it asks.`,
-        preview: entryPreview(args["name"], entry),
-        bound: { approval: entry["approval"] },
-      };
-    },
-    async (args, bound, context) => {
-      // The digest of the entry shown: the Chest refuses it if the entry changed since.
-      const started = await post(context, "/catalogue/install", { name: args["name"], approval: bound["approval"], ...given(args, "as", "open_public") }, true);
+      const started = await post(context, "/catalogue/install", { name: args["name"], approval: entry["approval"], ...given(args, "as", "open_public") }, true);
       return done(`the installation of ${args["name"]} started; follow it with tool_status.`, untrusted(`catalogue:${args["name"]}`, started));
     },
   ),
@@ -583,14 +479,10 @@ const tools: readonly Tool[] = [
   writer(
     "link_github",
     "Link a GitHub repository",
-    "Links a branch of a repository to the tool its manifest names (or as): the head of the branch is built and installed, and with auto its pushes are followed. For whoever runs the Chest. Replacing a running tool is not for agents.",
+    "Asks to link a branch of a repository to the tool its manifest names (or as), to build and install its head and, with auto, its pushes. The Chest never links for a token: for a new tool it records a request the owner or an admin approves; a tool already in service is linked by its owner from the tool's settings page. It answers approval_required with the page where they decide.",
     input({ repository, branch, as, auto: { type: "boolean", description: "Build and install each new push of the branch." } }, ["repository", "branch"]),
     { destructive: false },
-    async (args, context) => ({
-      summary: `Would link the branch ${args["branch"]} of ${args["repository"]} to the tool its manifest below names${args["as"] ? `, under the name ${args["as"]}` : ""}: the Chest builds its head and installs it${args["auto"] ? ", then each new push" : ""}. The head may move between this dry run and the commit.`,
-      preview: await manifest(context, args),
-    }),
-    async (args, _, context) => {
+    async (args, context) => {
       const linked = await post(context, "/github/links", { repository: args["repository"], branch: args["branch"], ...given(args, "as", "auto") }, true);
       return done(`${args["repository"]} is linked; its head is being built. Follow it with tool_status.`, untrusted(`github:${args["repository"]}@${args["branch"]}`, linked));
     },
@@ -598,7 +490,7 @@ const tools: readonly Tool[] = [
   writer(
     "propose_tool",
     "Propose a tool",
-    "Proposes a tool — of the catalogue (name), or of a GitHub repository (repository, branch) — to whoever runs the Chest, who decides in the Chest.",
+    "Proposes a tool — of the catalogue (name), or of a GitHub repository (repository, branch) — to whoever runs the Chest, who decides in the Chest. Show the human what is proposed first: catalogue_list or github_preview.",
     input({ source: { type: "string", enum: ["catalogue", "github"] }, name: toolName, repository, branch, as }, ["source"]),
     { destructive: false },
     async (args, context) => {
@@ -609,13 +501,6 @@ const tools: readonly Tool[] = [
       if (catalogue ? !named || repositoryGiven || branchGiven : named || !repositoryGiven || !branchGiven) {
         throw new ArgumentError("a proposal from the catalogue takes a name; one from GitHub takes a repository and a branch");
       }
-      const what = catalogue ? `the catalogue tool ${args["name"]}` : `the branch ${args["branch"]} of ${args["repository"]}`;
-      return {
-        summary: `Would propose ${what}${args["as"] ? ` under the name ${args["as"]}` : ""} to whoever runs the Chest, as shown below; they decide in the Chest.`,
-        preview: catalogue ? entryPreview(args["name"], await catalogueEntry(context, args["name"])) : await manifest(context, args),
-      };
-    },
-    async (args, _, context) => {
       const proposed = await post(context, "/proposals", given(args, "source", "name", "repository", "branch", "as"), true);
       return done("the proposal was sent to whoever runs the Chest.", untrusted("proposal", proposed));
     },

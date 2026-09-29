@@ -1,10 +1,9 @@
 // What a call of a tool answers: a text for the model and the same in
 // structured form. The server's own words are said plainly; what the Chest
 // returns of tools and people is untrusted, fenced in the text. An error of
-// a tool — a refusal of the Chest, an argument refused — is a result with
-// isError, so that the model can read it and act.
+// a tool — a refusal of the Chest, an argument refused, a decision left to a
+// human — is a result with isError, so that the model can read it and act.
 import { ChestError } from "./chest.js";
-import type { Refusal } from "./confirm.js";
 import { clean, fence, untrusted, type Untrusted } from "./untrusted.js";
 
 /** The result of tools/call (CallToolResult). */
@@ -23,51 +22,9 @@ export function data(intro: string, value: Untrusted, extra: Record<string, unkn
   return outcome(`${intro}\n${fence(value)}`, { ...value, ...extra });
 }
 
-/** What a dry run says of a write, and what may commit it. */
-export type Plan = {
-  /** What would happen, in the server's words. */
-  readonly summary: string;
-  /** How many rows the write would change, when the Chest says it. */
-  readonly affected?: number;
-  /** What the Chest showed of what would be done: an entry, a manifest, rows. */
-  readonly preview?: Untrusted;
-};
-
-/** A dry run: nothing was changed; how to commit once a human approves. */
-export function dryRun(tool: string, plan: Plan, confirmation: string, expiresAt: string): Outcome {
-  const lines = [
-    "DRY RUN: nothing was changed.",
-    plan.summary,
-    ...(plan.affected === undefined ? [] : [`Rows that would change: ${plan.affected}.`]),
-    `To commit, show this to the human and wait for their explicit approval; then call ${tool} again with the same arguments and "confirmation": "${confirmation}" (valid once, until ${expiresAt}).`,
-    ...(plan.preview ? [fence(plan.preview)] : []),
-  ];
-  return outcome(lines.join("\n"), {
-    dryRun: true,
-    summary: plan.summary,
-    ...(plan.affected === undefined ? {} : { affected: plan.affected }),
-    confirmation,
-    expiresAt,
-    ...(plan.preview ? { preview: plan.preview } : {}),
-  });
-}
-
 /** A write committed, and what the Chest answered of it. */
 export function done(summary: string, result?: Untrusted): Outcome {
   return outcome(`Done: ${summary}${result ? "\n" + fence(result) : ""}`, { committed: true, summary, ...(result ? { result } : {}) });
-}
-
-/** The words of a confirmation refused. */
-const confirmationWords: Record<Refusal, string> = {
-  missing: "No confirmation was given.",
-  unknown: "This confirmation is unknown: it was never given, or it was already used.",
-  expired: "This confirmation expired (five minutes).",
-  mismatch: "This confirmation was given for another request: the tool and every argument must be the same as in the dry run.",
-};
-
-/** A commit refused for its confirmation: nothing was sent to the Chest. */
-export function confirmationRefused(tool: string, refusal: Refusal): Outcome {
-  return outcome(`Refused, nothing was sent: ${confirmationWords[refusal]} Call ${tool} again without "confirmation" for a new dry run, and let the human approve it.`, { error: "confirmation_" + refusal }, true);
 }
 
 /** Arguments a tool refuses that its schema alone cannot say. */
@@ -86,8 +43,8 @@ export function invalid(reason: string): Outcome {
  */
 const refusalWords: Record<string, string> = {
   invalid_token: "The token is unknown, expired or revoked. A member creates a new one in their Chest profile (access tokens) and sets it as CHEST_TOKEN.",
-  "read_only 403": "This token only reads: it can neither write nor dry-run a write.",
-  "read_only 422": "This is read-only here: a statement that writes needs write: true (a dry run first); a view, a table without a primary key or chest_migrations is never edited.",
+  "read_only 403": "This token only reads: tokens are read-only unless their member chose read and write when creating them. Tell the human; only they can create a token that writes, in their Chest profile.",
+  "read_only 422": "This is read-only here: a statement that writes needs write: true; a view, a table without a primary key or chest_migrations is never edited.",
   narrowed: "This token is narrowed to some tools: it has none of the rights of the whole Chest (catalogue, proposals, GitHub).",
   not_for_agents: "Replacing a tool is decided in the Chest, by a human, from its page.",
   forbidden: "The member of this token may not do this.",
@@ -98,15 +55,48 @@ const refusalWords: Record<string, string> = {
   cancelled: "The request was cancelled.",
 };
 
+/** The longest reason of the Chest given for a decision left to a human. */
+const MAX_APPROVAL_REASON = 1000;
+
 /**
- * A failure as a result: a refusal of the Chest in its own code with what
- * it means; an uncertain write said so, never to be sent again.
+ * A decision the Chest leaves to a human (403 approval_required): nothing
+ * was done. Its reason, written by the Chest, is given as data; its page is
+ * given only when it is on the Chest's own origin (checked in chest.ts).
+ */
+function approvalRequired(error: ChestError): Outcome {
+  const { status, reason, approveUrl } = error.details;
+  const said = reason === undefined ? undefined : clean(reason).slice(0, MAX_APPROVAL_REASON);
+  const lines = [
+    "APPROVAL REQUIRED: nothing was done. The Chest leaves this decision to a human: the owner or an admin approves it in the Chest (for an installation or a new tool, the Chest recorded a request that now waits for them), or, for a tool already in service, its owner does it from the tool's page.",
+    approveUrl ? `Give the human this page of the Chest, where they decide: ${approveUrl}` : "Tell the human to open the Chest to decide.",
+    "Do not call this again and do not work around it (another tool, another name, another route): wait for the human's decision.",
+  ];
+  const details = said ? untrusted("chest:approval", { reason: said }) : undefined;
+  if (details) lines.push("The Chest's reason:", fence(details));
+  return outcome(
+    lines.join("\n"),
+    {
+      error: "approval_required",
+      ...(status === undefined ? {} : { status }),
+      ...(said === undefined ? {} : { reason: said }),
+      ...(approveUrl === undefined ? {} : { approveUrl }),
+      uncertain: false,
+    },
+    true,
+  );
+}
+
+/**
+ * A failure as a result: a decision left to a human said as such; a refusal
+ * of the Chest in its own code with what it means; an uncertain write said
+ * so, never to be sent again.
  */
 export function failure(error: unknown): Outcome {
   if (error instanceof ArgumentError) return invalid(error.message);
   if (!(error instanceof ChestError)) {
     return outcome("The server failed on this request; nothing more is known.", { error: "internal_error" }, true);
   }
+  if (error.code === "approval_required" && error.details.status === 403) return approvalRequired(error);
   const { status, reason, retryAfter, more, uncertain } = error.details;
   const lines = [error.message + (reason ? ` (${clean(reason).slice(0, 200)})` : "") + "."];
   const words = [`${error.code} ${status}`, error.code].find(key => Object.hasOwn(refusalWords, key));

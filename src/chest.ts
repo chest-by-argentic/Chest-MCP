@@ -27,8 +27,8 @@ export type Answer = {
 
 /**
  * A request that did not end in an answer of the Chest. `code` is the
- * Chest's own (`read_only`, `narrowed`, `not_for_agents`, `rate_limited`,
- * `row_changed`…) or this client's (`unreachable`, `timeout`,
+ * Chest's own (`read_only`, `approval_required`, `narrowed`,
+ * `not_for_agents`, `rate_limited`, `row_changed`…) or this client's (`unreachable`, `timeout`,
  * `redirect_refused`, `too_large`, `invalid_answer`). `uncertain` says a
  * write may or may not have been done: it must not be sent again.
  */
@@ -42,6 +42,8 @@ export class ChestError extends Error {
       readonly reason?: string;
       /** Seconds to wait before another request (429). */
       readonly retryAfter?: number;
+      /** Where a human approves what the Chest refused (approval_required): on the Chest's own origin only. */
+      readonly approveUrl?: string;
       /** What else the Chest said: a proposed migration, PostgreSQL's refusal. */
       readonly more?: Record<string, unknown>;
       readonly uncertain: boolean;
@@ -111,7 +113,7 @@ export class Chest {
           read(response, MAX_ANSWER).then(
             raw => {
               try {
-                resolve(answer(response, raw, call.write));
+                resolve(answer(response, raw, call.write, this.#origin));
               } catch (error) {
                 reject(error);
               }
@@ -158,11 +160,29 @@ function read(response: IncomingMessage, max: number): Promise<Buffer> {
 }
 
 /**
- * The answer of a response read whole: its body for a 2xx; a ChestError
- * for anything else — the Chest's refusal `{error, reason?}` as it says it,
- * a redirect refused, a body that is not what the status promises.
+ * The page of the Chest where a human approves a refusal: an https address
+ * on the Chest's own origin, without credentials; anything else is dropped,
+ * so that no answer can send the human elsewhere.
  */
-function answer(response: IncomingMessage, raw: Buffer, write: boolean): Answer {
+function approvePage(value: unknown, origin: string): string | undefined {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "https:" || url.origin !== origin || url.username !== "" || url.password !== "") return undefined;
+  return url.href;
+}
+
+/**
+ * The answer of a response read whole: its body for a 2xx; a ChestError
+ * for anything else — the Chest's refusal `{error, reason?, approve_url?}`
+ * as it says it, a redirect refused, a body that is not what the status
+ * promises.
+ */
+function answer(response: IncomingMessage, raw: Buffer, write: boolean, origin: string): Answer {
   const status = response.statusCode ?? 0;
   const media = (response.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
   if (status >= 300 && status < 400) {
@@ -193,13 +213,15 @@ function answer(response: IncomingMessage, raw: Buffer, write: boolean): Answer 
   const refusal = body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
   const code = typeof refusal["error"] === "string" ? refusal["error"] : `http_${status}`;
   const reason = typeof refusal["reason"] === "string" ? refusal["reason"] : undefined;
-  const more = Object.fromEntries(Object.entries(refusal).filter(([key]) => key !== "error" && key !== "reason"));
+  const approveUrl = approvePage(refusal["approve_url"], origin);
+  const more = Object.fromEntries(Object.entries(refusal).filter(([key]) => key !== "error" && key !== "reason" && key !== "approve_url"));
   const retry = Number(response.headers["retry-after"]);
   throw new ChestError(code, `The Chest answered ${status} ${code}`, {
     status,
     ...(reason === undefined ? {} : { reason }),
     ...(Object.keys(more).length > 0 ? { more } : {}),
     ...(status === 429 && Number.isInteger(retry) && retry >= 0 ? { retryAfter: retry } : {}),
+    ...(approveUrl === undefined ? {} : { approveUrl }),
     uncertain,
   });
 }

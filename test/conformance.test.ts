@@ -12,7 +12,9 @@ let chest: FakeChest;
 before(async () => {
   chest = await fakeChest();
   chest.handle((request, response) => {
-    if (request.url === "/api/v1/me") json(response, 200, { member: { id: "mbr_aaaaaaaaaaaaaaaaaaaaaaaaaa", first_name: "Ada", last_name: "L", owner: true, admin: false }, token: { id: "0123456789ab", name: "Agent", read_only: false, tools: [], expires: "2026-12-01T00:00:00Z" }, runs: { all: true, tools: [] } });
+    if (request.url === "/api/v1/catalogue") json(response, 200, { state: "ready", tools: [{ name: "forms", approval: "b".repeat(64) }] });
+    else if (request.url === "/api/v1/catalogue/install") json(response, 403, { error: "approval_required", reason: "Installing a tool is decided by the owner or an admin.", approve_url: chest.origin + "/team" });
+    else if (request.url === "/api/v1/me") json(response, 200, { member: { id: "mbr_aaaaaaaaaaaaaaaaaaaaaaaaaa", first_name: "Ada", last_name: "L", owner: true, admin: false }, token: { id: "0123456789ab", name: "Agent", read_only: false, tools: [], expires: "2026-12-01T00:00:00Z" }, runs: { all: true, tools: [] } });
     else json(response, 200, { columns: [], rows: [], truncated: false, command: "UPDATE", affected: 1, committed: false, ms: 1 });
   });
 });
@@ -26,7 +28,7 @@ async function connect(mode: "modern" | "legacy"): Promise<Client> {
 }
 
 for (const mode of ["modern", "legacy"] as const) {
-  test(`the official client, ${mode} era: identity, instructions, tools, a call, a dry run and the rules`, async () => {
+  test(`the official client, ${mode} era: identity, instructions, tools, a call, a write, an approval required and the rules`, async () => {
     const client = await connect(mode);
     try {
       assert.equal(client.getProtocolEra(), mode);
@@ -39,13 +41,14 @@ for (const mode of ["modern", "legacy"] as const) {
       const me = await client.callTool({ name: "whoami", arguments: {} });
       assert.equal(me.isError, undefined);
       assert.equal((me.structuredContent as { data: { member: { first_name: string } } }).data.member.first_name, "Ada");
-      const dry = await client.callTool({ name: "db_query", arguments: { app: "webdb", sql: "UPDATE notes SET text = 'x'", write: true } });
-      assert.equal((dry.structuredContent as { dryRun: boolean }).dryRun, true);
-      const refused = await client.callTool({ name: "db_query", arguments: { app: "webdb", sql: "UPDATE notes SET text = 'y'", write: true, confirmation: (dry.structuredContent as { confirmation: string }).confirmation } });
-      assert.equal(refused.isError, true);
+      const write = await client.callTool({ name: "db_query", arguments: { app: "webdb", sql: "UPDATE notes SET text = 'x'", write: true } });
+      assert.equal((write.structuredContent as { committed: boolean }).committed, true);
+      const approval = await client.callTool({ name: "install_from_catalogue", arguments: { name: "forms" } });
+      assert.equal(approval.isError, true);
+      assert.equal((approval.structuredContent as { error: string }).error, "approval_required");
       const rules = await client.readResource({ uri: "chest://rules" });
       assert.equal(rules.contents[0]!.uri, "chest://rules");
-      assert.ok(!JSON.stringify([tools, me, dry, refused, rules]).includes(TOKEN));
+      assert.ok(!JSON.stringify([tools, me, write, approval, rules]).includes(TOKEN));
     } finally {
       await client.close();
     }
