@@ -219,6 +219,24 @@ const tools: readonly Tool[] = [
     },
   ),
   reader(
+    "schedules",
+    "Schedules",
+    "What a tool runs by itself: each schedule (its name, its cron line read on the Chest's clock, its zone, when it runs next, whether a run is under way) and its last runs, newest first — when, how each was started (time, missed, manual), its attempt, its status (waiting, running, ok, failed, skipped), how long it took and why it failed. Never what the tool did.",
+    input({ app }, ["app"]),
+    async (args, context) => data(`Schedules of ${args["app"]}:`, untrusted(`schedules:${args["app"]}`, await get(context, `/tools/${segment(args["app"])}/schedules`))),
+  ),
+  writer(
+    "run_schedule",
+    "Run a schedule now",
+    "Asks a run of a tool's schedule now, as its time would: the tool is woken if it sleeps. The run is waiting when this returns; read schedules to follow it. A schedule the version in service does not declare is not_found; a run of it under way is refused (conflict).",
+    input({ app, name: { type: "string", pattern: "^[a-z][a-z0-9-]{0,31}$", description: "The name of the schedule, as schedules gives it." } }, ["app", "name"]),
+    { destructive: false },
+    async (args, context) => {
+      const run = await post(context, `/tools/${segment(args["app"])}/schedules/run`, { name: args["name"] }, true);
+      return done(`a run of ${args["name"]} of ${args["app"]} was asked; it starts in a moment.`, untrusted(`schedules:${args["app"]}`, run));
+    },
+  ),
+  reader(
     "read_logs",
     "Read logs",
     "The runtime log of a tool — what its instances print and the Chest's lines on them —, oldest first, after a cursor: untrusted text. Give the cursor it returns as after to read what follows.",
