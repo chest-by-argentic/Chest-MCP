@@ -3,7 +3,7 @@
 `@argentic/chest-mcp` lets an assistant — Claude Code, Claude Desktop, any
 [MCP](https://modelcontextprotocol.io) client — work on your Chest with your
 personal access token: see what needs your attention in your inbox, read the
-tools you run, their logs and builds, browse and edit their databases, browse and clean up their files, set their
+tools you run, their logs, builds and schedules (and run one now), browse and edit their databases, browse and clean up their files, set their
 variables, propose tools from the catalogue or GitHub. It does only what the
 Chest allows the token: the Chest enforces the rights, and leaves some
 decisions to a human (see [What the Chest enforces](#what-the-chest-enforces)).
@@ -103,6 +103,7 @@ Reads answer at once:
 | `list_deployments` | Versions and builds of every tool the token runs |
 | `build_log` | The output of a tool's last build (its end, when long) |
 | `read_logs` | The runtime log of a tool, after a cursor (`after`, `limit` up to 500) |
+| `schedules` | What a tool runs by itself: each schedule (cron line on the Chest's clock, next run, a run under way) and its last runs — status, attempt, duration, why one failed |
 | `db_overview` | The tables of a tool's database and the migrations played |
 | `db_structure` | Columns, keys and indexes of a table |
 | `db_rows` | A page of rows, filtered, searched, sorted; each with its key and version |
@@ -122,6 +123,7 @@ created **read and write**):
 | `files_delete` | Deletes files of a tool by `names` (up to 1,000) or everything under a `folder` (1,000 per call; `more` says some remain); the tool is not told |
 | `set_variable` | Sets (`value`, `secret`) or removes a variable; applies at the next start |
 | `redeploy` | Starts a tool again with its variables as they are now |
+| `run_schedule` | Runs a schedule of a tool now, as its time would (the tool woken if it sleeps); `schedules` follows it |
 | `install_from_catalogue` | Asks to install a tool of the catalogue, exactly as the entry read (its digest is sent): the Chest records a request the owner or an admin approves (`approval_required`) |
 | `link_github` | Asks to link a branch to a tool: the Chest records a request for a new tool, or its owner links a tool in service from its settings page (`approval_required`) |
 | `propose_tool` | Proposes a tool of the catalogue or of GitHub to whoever runs the Chest |

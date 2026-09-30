@@ -62,8 +62,8 @@ test("an unknown legacy version is answered with the newest legacy one", async (
   await server.end();
 });
 
-const writes = ["redeploy", "db_query", "db_insert", "db_update", "db_delete", "set_variable", "install_from_catalogue", "link_github", "propose_tool", "files_delete"];
-const reads = ["whoami", "inbox", "list_tools", "tool_status", "list_deployments", "build_log", "read_logs", "db_overview", "db_structure", "db_rows", "list_variables", "catalogue_list", "github_preview", "files_list", "files_link"];
+const writes = ["redeploy", "db_query", "db_insert", "db_update", "db_delete", "set_variable", "install_from_catalogue", "link_github", "propose_tool", "files_delete", "run_schedule"];
+const reads = ["whoami", "inbox", "list_tools", "tool_status", "list_deployments", "build_log", "schedules", "read_logs", "db_overview", "db_structure", "db_rows", "list_variables", "catalogue_list", "github_preview", "files_list", "files_link"];
 
 test("tools/list: the v1 tools, closed schemas, and hints that say which write", async () => {
   const server = spawnServer(labEnv(chest));

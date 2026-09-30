@@ -61,6 +61,7 @@ test("each write is one request, with exactly its arguments", async () => {
     ["db_update", { app: "webdb", schema: "public", table: "notes", key: ["1"], version: "7", values: { text: "b" } }, "/api/v1/tools/webdb/database/rows/update", { table, key: ["1"], version: "7", values: { text: "b" } }],
     ["db_delete", { app: "webdb", schema: "public", table: "notes", key: ["1"], version: "7" }, "/api/v1/tools/webdb/database/rows/delete", { table, key: ["1"], version: "7" }],
     ["redeploy", { app: "webdb" }, "/api/v1/tools/webdb/redeploy", {}],
+    ["run_schedule", { app: "web", name: "morning" }, "/api/v1/tools/web/schedules/run", { name: "morning" }],
     ["files_delete", { app: "web", names: ["a.txt", "photos/cat.png"] }, "/api/v1/tools/web/files/delete", { names: ["a.txt", "photos/cat.png"] }],
     ["link_github", { repository: "example/todo", branch: "main", auto: true }, "/api/v1/github/links", { repository: "example/todo", branch: "main", auto: true }],
   ];
