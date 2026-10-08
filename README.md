@@ -228,6 +228,10 @@ said, and a page cut short gives no cursor that would skip lines.
   appears in the output, an error or stderr — any text that would carry it is
   redacted — and it is removed from the process's environment once read.
 - Arguments are checked against each tool's schema before anything is sent.
+- A message read on stdio is 4 MiB at most, counted in bytes before its line
+  feed, whether it arrives whole or in pieces. Requests run concurrently up to
+  what half the process's heap holds at their largest; past that, or while the
+  client does not read the output, the server stops reading its input.
 
 ## Develop
 

@@ -9,7 +9,7 @@ import type { Config } from "./config.js";
 import { VERSION } from "./version.js";
 
 /** The largest answer read: a result of the console is 4 MiB at most. */
-const MAX_ANSWER = 8 << 20;
+export const MAX_ANSWER = 8 << 20;
 
 /**
  * How long a request may take. Some routes of the Chest take their time on
